@@ -98,8 +98,8 @@
                 <input type="text" id="category" value="Default" readonly>
             </div>
             <div class="form-group">
-                <label for="date">Date (Hardcoded for simplicity):</label>
-                <input type="date" id="date" value="${new Date().toISOString().split('T')[0]}" required>
+                <label for="date">Date:</label>
+                <input type="date" id="date" required>
             </div>
             <button type="submit">Add Expense</button>
             <p id="error-message" class="error-message"></p>
@@ -113,8 +113,6 @@
 
     <script>
         // *** CONFIGURATION ***
-        // NOTE: When deployed alongside your serverless function on Vercel, 
-        // the relative path '/api/expenses' will automatically resolve to your API.
         const API_ENDPOINT = '/api/expenses';
 
         // *** DOM ELEMENTS ***
@@ -127,7 +125,6 @@
 
         /**
          * Renders the list of expenses in the UI.
-         * @param {Array} expenses The array of expense objects.
          */
         function renderExpenses(expenses) {
             // Clear the list first
@@ -146,7 +143,7 @@
                 // Format the amount for display
                 const formattedAmount = new Intl.NumberFormat('en-US', {
                     style: 'currency',
-                    currency: 'EUR'
+                    currency: 'EUR' // Change this to your desired currency
                 }).format(expense.amount);
 
                 item.innerHTML = `
@@ -167,32 +164,26 @@
         async function loadExpenses() {
             loadingMessage.style.display = 'block';
             errorMessage.textContent = '';
-
+            
             try {
-                const response = await fetch(API_ENDPOINT, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
+                const response = await fetch(API_ENDPOINT, { method: 'GET' });
+                const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(data.error || `HTTP error! Status: ${response.status}`);
                 }
 
-                const data = await response.json();
                 renderExpenses(data);
 
             } catch (error) {
                 console.error("Error loading expenses:", error);
                 loadingMessage.style.display = 'none';
-                expensesList.innerHTML += '<p style="color: red;">Failed to load expenses. Check the console for details.</p>';
+                expensesList.innerHTML = `<h2>Current Expenses</h2><p style="color: red;">Failed to load expenses: ${error.message}</p>`;
             }
         }
 
         /**
          * Handles the POST request to add a new expense.
-         * @param {object} expenseData The data to send in the POST body.
          */
         async function addExpense(expenseData) {
             errorMessage.textContent = ''; // Clear previous errors
@@ -209,13 +200,20 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    // Handle server-side errors (like missing fields)
+                    // Handle server-side validation or other POST errors
                     const errorDetail = data.error || `HTTP error! Status: ${response.status}`;
                     throw new Error(errorDetail);
                 }
 
                 // Success: Reload the full list to show the new item
                 await loadExpenses();
+                
+                // Clear the form fields upon success
+                expenseForm.reset();
+                // Re-set the hardcoded category and date after reset
+                document.getElementById('category').value = "Default";
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+
 
             } catch (error) {
                 console.error("Error adding expense:", error);
@@ -226,35 +224,27 @@
         // *** EVENT LISTENERS ***
 
         expenseForm.addEventListener('submit', async (e) => {
-            e.preventDefault(); // Stop the default form submission
+            e.preventDefault(); 
 
+            // Get values from form inputs
             const description = document.getElementById('description').value.trim();
-            // Parse amount to ensure it's a float, matching the backend expectation
-            const amount = parseFloat(document.getElementById('amount').value);
+            const amount = document.getElementById('amount').value; // Keep as string for now
             const category = document.getElementById('category').value;
             const date = document.getElementById('date').value;
 
             const expenseData = {
                 description,
-                amount,
-                category, // Sent to satisfy the backend validation
-                date, // Sent to satisfy the backend validation
+                amount: parseFloat(amount), // Send as a number to the backend
+                category, 
+                date, 
             };
 
             await addExpense(expenseData);
-            
-            // Clear the form fields upon success
-            if (!errorMessage.textContent) {
-                expenseForm.reset();
-                // Re-set the hardcoded category and date after reset
-                document.getElementById('category').value = "Default";
-                document.getElementById('date').value = new Date().toISOString().split('T')[0];
-            }
         });
 
         // *** INITIALIZATION ***
 
-        // 1. Set the initial date to today
+        // 1. Set the initial date input value to today's date (YYYY-MM-DD format)
         document.getElementById('date').value = new Date().toISOString().split('T')[0];
 
         // 2. Load expenses when the page first loads
