@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vercel Serverless Expense Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="date"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #expenses-list {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        .expense-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px dashed #eee;
+        }
+        .expense-item:last-child {
+            border-bottom: none;
+        }
+        .expense-details {
+            flex-grow: 1;
+        }
+        .expense-amount {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💸 Simple Expense Tracker</h1>
+
+        <form id="expense-form">
+            <h2>Add New Expense</h2>
+            <div class="form-group">
+                <label for="description">Description:</label>
+                <input type="text" id="description" required>
+            </div>
+            <div class="form-group">
+                <label for="amount">Amount (€):</label>
+                <input type="number" id="amount" step="0.01" min="0.01" required>
+            </div>
+            <div class="form-group">
+                <label for="category">Category (Hardcoded for simplicity):</label>
+                <input type="text" id="category" value="Default" readonly>
+            </div>
+            <div class="form-group">
+                <label for="date">Date (Hardcoded for simplicity):</label>
+                <input type="date" id="date" value="${new Date().toISOString().split('T')[0]}" required>
+            </div>
+            <button type="submit">Add Expense</button>
+            <p id="error-message" class="error-message"></p>
+        </form>
+
+        <div id="expenses-list">
+            <h2>Current Expenses</h2>
+            <p id="loading-message">Loading expenses...</p>
+        </div>
+    </div>
+
+    <script>
+        // *** CONFIGURATION ***
+        // NOTE: When deployed alongside your serverless function on Vercel, 
+        // the relative path '/api/expenses' will automatically resolve to your API.
+        const API_ENDPOINT = '/api/expenses';
+
+        // *** DOM ELEMENTS ***
+        const expenseForm = document.getElementById('expense-form');
+        const expensesList = document.getElementById('expenses-list');
+        const errorMessage = document.getElementById('error-message');
+        const loadingMessage = document.getElementById('loading-message');
+
+        // *** FETCH FUNCTIONS ***
+
+        /**
+         * Renders the list of expenses in the UI.
+         * @param {Array} expenses The array of expense objects.
+         */
+        function renderExpenses(expenses) {
+            // Clear the list first
+            expensesList.innerHTML = '<h2>Current Expenses</h2>';
+            loadingMessage.style.display = 'none';
+
+            if (expenses.length === 0) {
+                expensesList.innerHTML += '<p>No expenses recorded yet.</p>';
+                return;
+            }
+
+            expenses.forEach(expense => {
+                const item = document.createElement('div');
+                item.className = 'expense-item';
+                
+                // Format the amount for display
+                const formattedAmount = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'EUR'
+                }).format(expense.amount);
+
+                item.innerHTML = `
+                    <div class="expense-details">
+                        <strong>${expense.description}</strong> 
+                        (Category: ${expense.category || 'N/A'}) - 
+                        <small>${expense.date}</small>
+                    </div>
+                    <div class="expense-amount">${formattedAmount}</div>
+                `;
+                expensesList.appendChild(item);
+            });
+        }
+
+        /**
+         * Handles the GET request to load all expenses.
+         */
+        async function loadExpenses() {
+            loadingMessage.style.display = 'block';
+            errorMessage.textContent = '';
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                renderExpenses(data);
+
+            } catch (error) {
+                console.error("Error loading expenses:", error);
+                loadingMessage.style.display = 'none';
+                expensesList.innerHTML += '<p style="color: red;">Failed to load expenses. Check the console for details.</p>';
+            }
+        }
+
+        /**
+         * Handles the POST request to add a new expense.
+         * @param {object} expenseData The data to send in the POST body.
+         */
+        async function addExpense(expenseData) {
+            errorMessage.textContent = ''; // Clear previous errors
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(expenseData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    // Handle server-side errors (like missing fields)
+                    const errorDetail = data.error || `HTTP error! Status: ${response.status}`;
+                    throw new Error(errorDetail);
+                }
+
+                // Success: Reload the full list to show the new item
+                await loadExpenses();
+
+            } catch (error) {
+                console.error("Error adding expense:", error);
+                errorMessage.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // *** EVENT LISTENERS ***
+
+        expenseForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Stop the default form submission
+
+            const description = document.getElementById('description').value.trim();
+            // Parse amount to ensure it's a float, matching the backend expectation
+            const amount = parseFloat(document.getElementById('amount').value);
+            const category = document.getElementById('category').value;
+            const date = document.getElementById('date').value;
+
+            const expenseData = {
+                description,
+                amount,
+                category, // Sent to satisfy the backend validation
+                date, // Sent to satisfy the backend validation
+            };
+
+            await addExpense(expenseData);
+            
+            // Clear the form fields upon success
+            if (!errorMessage.textContent) {
+                expenseForm.reset();
+                // Re-set the hardcoded category and date after reset
+                document.getElementById('category').value = "Default";
+                document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            }
+        });
+
+        // *** INITIALIZATION ***
+
+        // 1. Set the initial date to today
+        document.getElementById('date').value = new Date().toISOString().split('T')[0];
+
+        // 2. Load expenses when the page first loads
+        loadExpenses();
+
+    </script>
+</body>
+</html>
